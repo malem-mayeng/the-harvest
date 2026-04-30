@@ -32,10 +32,12 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
   final _quantityController = TextEditingController();
   final _totalAmountController = TextEditingController();
   final _advancePaidController = TextEditingController();
+  final _notesController = TextEditingController();
   double _dueAmount = 0;
   bool _isSaving = false;
 
-  final List<String> _items = ['Fish', 'Vegetables', 'Other'];
+  // Default items + dynamic custom items
+  List<String> _allItems = ['Fish', 'Vegetables', 'Other'];
 
   bool get _isEditing => widget.existingSale != null;
 
@@ -47,13 +49,31 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     } else {
       _saleDate = DateTime.now();
     }
+    _loadCustomItems();
+  }
+
+  Future<void> _loadCustomItems() async {
+    final customItems = await ref.read(customItemServiceProvider).getAllItems();
+    if (mounted) {
+      setState(() {
+        _allItems = ['Fish', 'Vegetables', ...customItems, 'Other'];
+        // If existing sale has a custom item that's now in the list, select it
+        if (_isEditing) {
+          final sale = widget.existingSale!;
+          if (_allItems.contains(sale.itemName)) {
+            _selectedItem = sale.itemName;
+          }
+        }
+      });
+    }
   }
 
   void _populateFromExisting() {
     final sale = widget.existingSale!;
     _saleDate = sale.saleDate;
 
-    if (_items.contains(sale.itemName)) {
+    // Check if item is in defaults first; custom items loaded async
+    if (['Fish', 'Vegetables'].contains(sale.itemName)) {
       _selectedItem = sale.itemName;
     } else {
       _selectedItem = 'Other';
@@ -61,9 +81,16 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     }
 
     _selectedUnitType = sale.unitType;
-    _quantityController.text = sale.quantity.toString();
-    _totalAmountController.text = sale.totalAmount.toStringAsFixed(0);
-    _advancePaidController.text = sale.advancePaid.toStringAsFixed(0);
+    if (sale.quantity > 0) {
+      _quantityController.text = sale.quantity.toString();
+    }
+    if (sale.totalAmount > 0) {
+      _totalAmountController.text = sale.totalAmount.toStringAsFixed(0);
+    }
+    if (sale.advancePaid > 0) {
+      _advancePaidController.text = sale.advancePaid.toStringAsFixed(0);
+    }
+    _notesController.text = sale.notes ?? '';
     _dueAmount = sale.dueAmount;
 
     // Load buyer info
@@ -81,6 +108,7 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     _quantityController.dispose();
     _totalAmountController.dispose();
     _advancePaidController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -118,7 +146,7 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     // Validate buyer
-    if (_selectedBuyer == null && _newBuyerName.trim().isEmpty) {
+    if (!_isEditing && _selectedBuyer == null && _newBuyerName.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select or enter a buyer name', style: TextStyle(fontSize: 16)),
@@ -133,12 +161,26 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     try {
       final buyerService = ref.read(buyerServiceProvider);
       final saleService = ref.read(saleServiceProvider);
+      final customItemService = ref.read(customItemServiceProvider);
 
       // Get or create buyer
-      final buyer = _selectedBuyer ?? await buyerService.createBuyer(_newBuyerName);
+      final buyer = _isEditing
+          ? _selectedBuyer!
+          : (_selectedBuyer ?? await buyerService.createBuyer(_newBuyerName));
 
       // Determine item name
       final itemName = _selectedItem == 'Other' ? _customItem.trim() : _selectedItem;
+
+      // Save custom item if "Other" was used
+      if (_selectedItem == 'Other' && itemName.isNotEmpty) {
+        await customItemService.addItem(itemName);
+        ref.invalidate(customItemListProvider);
+      }
+
+      final quantity = double.tryParse(_quantityController.text) ?? 0;
+      final totalAmount = double.tryParse(_totalAmountController.text) ?? 0;
+      final advancePaid = double.tryParse(_advancePaidController.text) ?? 0;
+      final notes = _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
 
       if (_isEditing) {
         await saleService.editSale(
@@ -146,20 +188,22 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
           buyerId: buyer.id!,
           itemName: itemName,
           unitType: _selectedUnitType,
-          quantity: double.parse(_quantityController.text),
-          totalAmount: double.parse(_totalAmountController.text),
-          advancePaid: double.tryParse(_advancePaidController.text) ?? 0,
+          quantity: quantity,
+          totalAmount: totalAmount,
+          advancePaid: advancePaid,
           saleDate: _saleDate,
+          notes: notes,
         );
       } else {
         await saleService.createSale(
           buyerId: buyer.id!,
           itemName: itemName,
           unitType: _selectedUnitType,
-          quantity: double.parse(_quantityController.text),
-          totalAmount: double.parse(_totalAmountController.text),
-          advancePaid: double.tryParse(_advancePaidController.text) ?? 0,
+          quantity: quantity,
+          totalAmount: totalAmount,
+          advancePaid: advancePaid,
           saleDate: _saleDate,
+          notes: notes,
         );
       }
 
@@ -211,21 +255,37 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
           children: [
             // ── Buyer ──────────────────────────────
             const _SectionLabel('Buyer'),
-            BuyerSearchField(
-              initialBuyer: _selectedBuyer,
-              onBuyerSelected: (buyer) {
-                setState(() {
-                  _selectedBuyer = buyer;
-                  _newBuyerName = '';
-                });
-              },
-              onNewBuyerName: (name) {
-                setState(() {
-                  _selectedBuyer = null;
-                  _newBuyerName = name;
-                });
-              },
-            ),
+            if (_isEditing)
+              // Read-only buyer name in edit mode
+              InputDecorator(
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.person, size: 24),
+                  filled: true,
+                ),
+                child: Text(
+                  _selectedBuyer?.buyerName ?? 'Loading...',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+              )
+            else
+              BuyerSearchField(
+                initialBuyer: _selectedBuyer,
+                onBuyerSelected: (buyer) {
+                  setState(() {
+                    _selectedBuyer = buyer;
+                    _newBuyerName = '';
+                  });
+                },
+                onNewBuyerName: (name) {
+                  setState(() {
+                    _selectedBuyer = null;
+                    _newBuyerName = name;
+                  });
+                },
+              ),
 
             const SizedBox(height: 20),
 
@@ -250,12 +310,12 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
             // ── Item ───────────────────────────────
             const _SectionLabel('Item Sold'),
             DropdownButtonFormField<String>(
-              value: _selectedItem,
+              value: _allItems.contains(_selectedItem) ? _selectedItem : 'Other',
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.inventory_2, size: 24),
               ),
               style: const TextStyle(fontSize: 18, color: AppTheme.textDark),
-              items: _items.map((item) {
+              items: _allItems.map((item) {
                 return DropdownMenuItem(value: item, child: Text(item));
               }).toList(),
               onChanged: (value) {
@@ -311,8 +371,8 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
 
             const SizedBox(height: 20),
 
-            // ── Quantity ───────────────────────────
-            const _SectionLabel('Quantity'),
+            // ── Quantity (optional) ─────────────────
+            const _SectionLabel('Quantity (optional)'),
             TextFormField(
               controller: _quantityController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -324,20 +384,15 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                 prefixIcon: const Icon(Icons.production_quantity_limits, size: 24),
                 suffixText: _selectedUnitType == 'weight' ? 'kg' : 'pcs',
                 suffixStyle: const TextStyle(fontSize: 16, color: AppTheme.textMedium),
+                hintText: 'Optional',
               ),
-              validator: (val) {
-                if (val == null || val.isEmpty) return 'Enter quantity';
-                if (double.tryParse(val) == null || double.parse(val) <= 0) {
-                  return 'Enter valid quantity';
-                }
-                return null;
-              },
+              // No validator — field is optional
             ),
 
             const SizedBox(height: 20),
 
-            // ── Total Amount ───────────────────────
-            const _SectionLabel('Total Amount (₹)'),
+            // ── Total Amount (optional) ─────────────
+            const _SectionLabel('Total Amount ₹ (optional)'),
             TextFormField(
               controller: _totalAmountController,
               keyboardType: TextInputType.number,
@@ -348,14 +403,9 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                 prefixIcon: Icon(Icons.currency_rupee, size: 24),
                 prefixText: '₹ ',
                 prefixStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                hintText: 'Optional — leave blank if unknown',
               ),
-              validator: (val) {
-                if (val == null || val.isEmpty) return 'Enter total amount';
-                if (double.tryParse(val) == null || double.parse(val) <= 0) {
-                  return 'Enter valid amount';
-                }
-                return null;
-              },
+              // No validator — field is optional
             ),
 
             const SizedBox(height: 20),
@@ -411,6 +461,24 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ── Notes (optional) ───────────────────
+            const _SectionLabel('Notes (optional)'),
+            TextFormField(
+              controller: _notesController,
+              maxLines: 3,
+              style: const TextStyle(fontSize: 16),
+              decoration: const InputDecoration(
+                prefixIcon: Padding(
+                  padding: EdgeInsets.only(bottom: 40),
+                  child: Icon(Icons.notes, size: 24),
+                ),
+                hintText: 'e.g., Mixed veg — cabbage, beans, carrots',
+                hintStyle: TextStyle(fontSize: 14),
               ),
             ),
 

@@ -4,6 +4,7 @@ import '../widgets/big_button.dart';
 import 'add_sale_screen.dart';
 import 'buyers_screen.dart';
 import 'pending_payments_screen.dart';
+import 'settings_screen.dart';
 
 /// Home screen with 3 large navigation buttons.
 /// Designed for simple, one-hand operation by elderly users.
@@ -17,7 +18,30 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 40),
+            const SizedBox(height: 20),
+
+            // Settings icon row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.settings, size: 28),
+                    color: AppTheme.textMedium,
+                    tooltip: 'Settings',
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
 
             // App header
             Container(

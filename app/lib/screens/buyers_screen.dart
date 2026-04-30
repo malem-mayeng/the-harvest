@@ -28,7 +28,7 @@ class BuyersScreen extends ConsumerWidget {
               children: [
                 const Icon(Icons.error_outline, size: 48, color: AppTheme.errorRed),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Something went wrong',
                   style: TextStyle(fontSize: 18, color: AppTheme.textMedium),
                 ),
@@ -86,9 +86,11 @@ class BuyersScreen extends ConsumerWidget {
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+                  contentPadding: const EdgeInsets.only(
+                    left: 20,
+                    top: 8,
+                    bottom: 8,
+                    right: 8,
                   ),
                   leading: CircleAvatar(
                     radius: 28,
@@ -119,9 +121,30 @@ class BuyersScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  trailing: const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: AppTheme.textLight,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Edit buyer
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 22),
+                        color: AppTheme.primaryGreen,
+                        tooltip: 'Edit Name',
+                        onPressed: () => _showEditBuyerDialog(context, ref, buyer),
+                      ),
+                      // Delete buyer
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 22),
+                        color: AppTheme.errorRed,
+                        tooltip: 'Delete Buyer',
+                        onPressed: () => _confirmDeleteBuyer(context, ref, buyer),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: AppTheme.textLight,
+                        size: 18,
+                      ),
+                    ],
                   ),
                   onTap: () async {
                     await Navigator.push(
@@ -140,5 +163,107 @@ class BuyersScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  void _showEditBuyerDialog(BuildContext context, WidgetRef ref, buyer) async {
+    final controller = TextEditingController(text: buyer.buyerName);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Buyer Name', style: TextStyle(fontSize: 22)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(fontSize: 18),
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Buyer Name',
+            hintText: 'Enter new name',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontSize: 18)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save', style: TextStyle(fontSize: 18)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      await ref.read(buyerServiceProvider).updateBuyerName(
+            buyer.id!,
+            controller.text.trim(),
+          );
+      ref.invalidate(buyerListProvider);
+    }
+
+    controller.dispose();
+  }
+
+  void _confirmDeleteBuyer(BuildContext context, WidgetRef ref, buyer) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: AppTheme.errorRed, size: 28),
+            const SizedBox(width: 8),
+            const Text('Delete Buyer?', style: TextStyle(fontSize: 22)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Delete "${buyer.buyerName}"?\n\n'
+              'This will permanently delete ALL sales and payment records for this buyer.\n\n'
+              'This action cannot be undone.',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.errorRed,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: const Text('Yes, Delete', style: TextStyle(fontSize: 18)),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(ctx, false),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('No', style: TextStyle(fontSize: 20)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm == true) {
+      await ref.read(buyerServiceProvider).deleteBuyerWithSales(buyer.id!);
+      ref.invalidate(buyerListProvider);
+      ref.invalidate(pendingSalesProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${buyer.buyerName} deleted',
+              style: const TextStyle(fontSize: 16),
+            ),
+            backgroundColor: AppTheme.textMedium,
+          ),
+        );
+      }
+    }
   }
 }

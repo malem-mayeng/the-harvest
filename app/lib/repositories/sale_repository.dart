@@ -25,6 +25,26 @@ class SaleRepository {
     );
   }
 
+  /// Delete a sale record by id.
+  Future<int> delete(int saleId) async {
+    final db = await _dbHelper.database;
+    return await db.delete(
+      Tables.salesTable,
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+  }
+
+  /// Delete all sales for a specific buyer.
+  Future<int> deleteByBuyerId(int buyerId) async {
+    final db = await _dbHelper.database;
+    return await db.delete(
+      Tables.salesTable,
+      where: 'buyer_id = ?',
+      whereArgs: [buyerId],
+    );
+  }
+
   /// Get all sales for a specific buyer, with buyer info joined.
   Future<List<Sale>> getByBuyerId(int buyerId) async {
     final db = await _dbHelper.database;
@@ -59,6 +79,27 @@ class SaleRepository {
       {
         'due_amount': 0,
         'status': 'paid',
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+  }
+
+  /// Update payment totals on a sale after a payment is recorded.
+  Future<int> updatePaymentTotals({
+    required int saleId,
+    required double totalPaid,
+    required double dueAmount,
+    required String status,
+  }) async {
+    final db = await _dbHelper.database;
+    return await db.update(
+      Tables.salesTable,
+      {
+        'total_paid': totalPaid,
+        'due_amount': dueAmount < 0 ? 0 : dueAmount,
+        'status': status,
         'updated_at': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',

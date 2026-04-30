@@ -24,14 +24,38 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
     await db.execute(Tables.createBuyersTable);
     await db.execute(Tables.createSalesTable);
+    await db.execute(Tables.createPaymentsTable);
+    await db.execute(Tables.createCustomItemsTable);
+  }
+
+  /// Migrate from version 1 to version 2.
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add notes column to sales
+      await db.execute(
+        'ALTER TABLE ${Tables.salesTable} ADD COLUMN notes TEXT',
+      );
+      // Add total_paid column to sales
+      await db.execute(
+        'ALTER TABLE ${Tables.salesTable} ADD COLUMN total_paid REAL NOT NULL DEFAULT 0',
+      );
+      // Backfill total_paid from advance_paid for existing rows
+      await db.execute(
+        'UPDATE ${Tables.salesTable} SET total_paid = advance_paid',
+      );
+      // Create new tables
+      await db.execute(Tables.createPaymentsTable);
+      await db.execute(Tables.createCustomItemsTable);
+    }
   }
 
   /// Close the database connection.
