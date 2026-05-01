@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import 'manage_items_screen.dart';
 
 /// Settings screen with app configuration options.
 class SettingsScreen extends ConsumerWidget {
@@ -16,34 +16,38 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Reset Item List
+          // Manage Items
           Card(
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppTheme.pendingOrange.withValues(alpha: 0.1),
+                  color: AppTheme.primaryGreen.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
-                  Icons.restart_alt,
-                  color: AppTheme.pendingOrange,
+                  Icons.list_alt_rounded,
+                  color: AppTheme.primaryGreen,
                   size: 28,
                 ),
               ),
               title: const Text(
-                'Reset Item List',
+                'Manage Items',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               subtitle: const Padding(
                 padding: EdgeInsets.only(top: 4),
                 child: Text(
-                  'Remove all custom items. Revert to defaults (Fish, Vegetables).',
+                  'Add, remove or update items and their unit prices.',
                   style: TextStyle(fontSize: 14, color: AppTheme.textMedium),
                 ),
               ),
-              onTap: () => _confirmResetItems(context, ref),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: AppTheme.textLight),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ManageItemsScreen()),
+              ),
             ),
           ),
 
@@ -135,42 +139,4 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _confirmResetItems(BuildContext context, WidgetRef ref) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset Item List?', style: TextStyle(fontSize: 22)),
-        content: const Text(
-          'This will remove all custom items you\'ve added. '
-          'The dropdown will revert to defaults: Fish, Vegetables.\n\n'
-          'Existing sale records are not affected.',
-          style: TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(fontSize: 18)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pendingOrange),
-            child: const Text('Reset', style: TextStyle(fontSize: 18)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await ref.read(customItemServiceProvider).resetToDefaults();
-      ref.invalidate(customItemListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Item list reset to defaults', style: TextStyle(fontSize: 16)),
-            backgroundColor: AppTheme.successGreen,
-          ),
-        );
-      }
-    }
-  }
 }

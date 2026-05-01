@@ -145,7 +145,14 @@ class PendingPaymentsScreen extends ConsumerWidget {
                       sale: sale,
                       showBuyerName: true,
                       onAddPayment: () => _showAddPaymentDialog(context, ref, sale),
-                      onMarkPaid: () => _showMarkCompleteDialog(context, ref, sale),
+                      onMarkPaid: (notes) async {
+                        await ref.read(saleServiceProvider).markSaleAsComplete(
+                              sale.id!,
+                              notes: notes,
+                            );
+                        ref.invalidate(pendingSalesProvider);
+                        ref.invalidate(buyerListProvider);
+                      },
                     );
                   },
                 ),
@@ -233,65 +240,4 @@ class PendingPaymentsScreen extends ConsumerWidget {
     notesController.dispose();
   }
 
-  void _showMarkCompleteDialog(BuildContext context, WidgetRef ref, sale) async {
-    final notesController = TextEditingController();
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Mark Complete?', style: TextStyle(fontSize: 22)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Settle sale for ${sale.buyerName ?? 'buyer'}?\nCurrent due: ₹${sale.dueAmount.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'This will mark the sale as fully paid regardless of remaining due.',
-                style: TextStyle(fontSize: 14, color: AppTheme.textMedium),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: notesController,
-                style: const TextStyle(fontSize: 16),
-                decoration: const InputDecoration(
-                  labelText: 'Settlement notes (optional)',
-                  hintText: 'e.g., Forgave ₹500',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(fontSize: 18)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
-            child: const Text('Yes, Complete', style: TextStyle(fontSize: 18)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      final notes = notesController.text.trim().isEmpty
-          ? null
-          : notesController.text.trim();
-      await ref.read(saleServiceProvider).markSaleAsComplete(
-            sale.id!,
-            notes: notes,
-          );
-      ref.invalidate(pendingSalesProvider);
-      ref.invalidate(buyerListProvider);
-    }
-
-    notesController.dispose();
-  }
 }

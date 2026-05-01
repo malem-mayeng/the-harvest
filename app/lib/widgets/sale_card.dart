@@ -9,7 +9,7 @@ class SaleCard extends StatelessWidget {
   final bool showBuyerName;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
-  final VoidCallback? onMarkPaid;
+  final Function(String? notes)? onMarkPaid;
   final VoidCallback? onAddPayment;
 
   const SaleCard({
@@ -240,15 +240,33 @@ class SaleCard extends StatelessWidget {
     );
   }
 
-  /// Confirmation popup for "All Clear" — Yes is focused/prominent.
+  /// Confirmation popup for "All Clear" — includes notes field, Yes is focused/prominent.
   void _confirmAllClear(BuildContext context) async {
+    final notesController = TextEditingController();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Mark as All Clear?', style: TextStyle(fontSize: 22)),
-        content: Text(
-          'Settle this payment?\nRemaining due: ₹${sale.dueAmount.toStringAsFixed(0)}\n\nThis will mark the sale as fully paid.',
-          style: const TextStyle(fontSize: 16),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Settle this payment?\nRemaining due: ₹${sale.dueAmount.toStringAsFixed(0)}\n\nThis will mark the sale as fully paid.',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                style: const TextStyle(fontSize: 16),
+                decoration: const InputDecoration(
+                  labelText: 'Settlement notes',
+                  hintText: 'e.g., Forgave ₹500',
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -265,8 +283,10 @@ class SaleCard extends StatelessWidget {
       ),
     );
     if (confirm == true) {
-      onMarkPaid?.call();
+      final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
+      onMarkPaid?.call(notes);
     }
+    notesController.dispose();
   }
 
   Widget _buildStatusBadge(bool isPending) {

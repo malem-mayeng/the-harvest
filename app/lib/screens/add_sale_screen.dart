@@ -1,3 +1,4 @@
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,18 +27,21 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
   Buyer? _selectedBuyer;
   String _newBuyerName = '';
   late DateTime _saleDate;
-  String _selectedItem = 'Fish';
+  String? _selectedItem;
   String _customItem = '';
-  String _selectedUnitType = 'count';
+  String _selectedUnitType = 'weight';
   final _quantityController = TextEditingController();
   final _totalAmountController = TextEditingController();
   final _advancePaidController = TextEditingController();
   final _notesController = TextEditingController();
+  final _kgController = TextEditingController();
+  final _gramsController = TextEditingController();
+  final _unitPriceController = TextEditingController();
   double _dueAmount = 0;
   bool _isSaving = false;
 
   // Default items + dynamic custom items
-  List<String> _allItems = ['Fish', 'Vegetables', 'Other'];
+  List<String> _allItems = ['Grass', 'Rohu', 'Silver', 'Hurubai', 'Common', 'Ukabi', 'Ngakup', 'Vegetables', 'Other'];
 
   bool get _isEditing => widget.existingSale != null;
 
@@ -49,19 +53,20 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     } else {
       _saleDate = DateTime.now();
     }
-    _loadCustomItems();
+    _loadItems();
   }
 
-  Future<void> _loadCustomItems() async {
-    final customItems = await ref.read(customItemServiceProvider).getAllItems();
+  Future<void> _loadItems() async {
+    final names = await ref.read(itemServiceProvider).getAllItemNames();
     if (mounted) {
       setState(() {
-        _allItems = ['Fish', 'Vegetables', ...customItems, 'Other'];
-        // If existing sale has a custom item that's now in the list, select it
+        _allItems = [...names, 'Other'];
         if (_isEditing) {
           final sale = widget.existingSale!;
           if (_allItems.contains(sale.itemName)) {
             _selectedItem = sale.itemName;
+          } else {
+            _selectedItem = 'Other';
           }
         }
       });
@@ -73,8 +78,11 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     _saleDate = sale.saleDate;
 
     // Check if item is in defaults first; custom items loaded async
-    if (['Fish', 'Vegetables'].contains(sale.itemName)) {
+    const defaultItems = ['Grass', 'Rohu', 'Silver', 'Hurubai', 'Common', 'Ukabi', 'Ngakup', 'Vegetables'];
+    if (defaultItems.contains(sale.itemName)) {
       _selectedItem = sale.itemName;
+    } else if (sale.itemName == 'Other') {
+      _selectedItem = 'Other';
     } else {
       _selectedItem = 'Other';
       _customItem = sale.itemName;
@@ -82,7 +90,14 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
 
     _selectedUnitType = sale.unitType;
     if (sale.quantity > 0) {
-      _quantityController.text = sale.quantity.toString();
+      if (sale.unitType == 'weight') {
+        final kg = sale.quantity.floor();
+        final grams = ((sale.quantity - kg) * 1000).round();
+        _kgController.text = kg.toString();
+        if (grams > 0) _gramsController.text = grams.toString();
+      } else {
+        _quantityController.text = sale.quantity.toString();
+      }
     }
     if (sale.totalAmount > 0) {
       _totalAmountController.text = sale.totalAmount.toStringAsFixed(0);
@@ -109,7 +124,32 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     _totalAmountController.dispose();
     _advancePaidController.dispose();
     _notesController.dispose();
+    _kgController.dispose();
+    _gramsController.dispose();
+    _unitPriceController.dispose();
     super.dispose();
+  }
+
+  /// Called whenever unit price or quantity changes — fills Total Amount.
+  void _calculateTotal() {
+    final unitPrice = double.tryParse(_unitPriceController.text) ?? 0;
+    if (unitPrice <= 0) {
+      _calculateDue();
+      return;
+    }
+    final double quantity;
+    if (_selectedUnitType == 'weight') {
+      final kg = double.tryParse(_kgController.text) ?? 0;
+      final grams = double.tryParse(_gramsController.text) ?? 0;
+      quantity = kg + grams / 1000;
+    } else {
+      quantity = double.tryParse(_quantityController.text) ?? 0;
+    }
+    if (quantity > 0) {
+      final total = unitPrice * quantity;
+      _totalAmountController.text = total.toStringAsFixed(0);
+    }
+    _calculateDue();
   }
 
   void _calculateDue() {
@@ -161,7 +201,7 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     try {
       final buyerService = ref.read(buyerServiceProvider);
       final saleService = ref.read(saleServiceProvider);
-      final customItemService = ref.read(customItemServiceProvider);
+      final itemService = ref.read(itemServiceProvider);
 
       // Get or create buyer
       final buyer = _isEditing
@@ -169,15 +209,28 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
           : (_selectedBuyer ?? await buyerService.createBuyer(_newBuyerName));
 
       // Determine item name
-      final itemName = _selectedItem == 'Other' ? _customItem.trim() : _selectedItem;
+      final itemName = _selectedItem == 'Other' ? _customItem.trim() : (_selectedItem ?? '');
 
       // Save custom item if "Other" was used
       if (_selectedItem == 'Other' && itemName.isNotEmpty) {
-        await customItemService.addItem(itemName);
-        ref.invalidate(customItemListProvider);
+        await itemService.addCustomItem(itemName);
+        ref.invalidate(itemListProvider);
       }
 
-      final quantity = double.tryParse(_quantityController.text) ?? 0;
+      // Persist unit price if provided (never overwrites with 0)
+      final unitPrice = double.tryParse(_unitPriceController.text) ?? 0;
+      if (unitPrice > 0 && itemName.isNotEmpty) {
+        await itemService.savePriceForItem(itemName, unitPrice);
+      }
+
+      final double quantity;
+      if (_selectedUnitType == 'weight') {
+        final kg = double.tryParse(_kgController.text) ?? 0;
+        final grams = double.tryParse(_gramsController.text) ?? 0;
+        quantity = kg + grams / 1000;
+      } else {
+        quantity = double.tryParse(_quantityController.text) ?? 0;
+      }
       final totalAmount = double.tryParse(_totalAmountController.text) ?? 0;
       final advancePaid = double.tryParse(_advancePaidController.text) ?? 0;
       final notes = _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
@@ -210,6 +263,7 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
       // Invalidate providers to refresh lists
       ref.invalidate(buyerListProvider);
       ref.invalidate(pendingSalesProvider);
+      ref.invalidate(itemListProvider);
       if (_selectedBuyer != null) {
         ref.invalidate(buyerSalesProvider(_selectedBuyer!.id!));
       }
@@ -309,17 +363,64 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
 
             // ── Item ───────────────────────────────
             const _SectionLabel('Item Sold'),
-            DropdownButtonFormField<String>(
-              value: _allItems.contains(_selectedItem) ? _selectedItem : 'Other',
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.inventory_2, size: 24),
-              ),
-              style: const TextStyle(fontSize: 18, color: AppTheme.textDark),
-              items: _allItems.map((item) {
-                return DropdownMenuItem(value: item, child: Text(item));
-              }).toList(),
-              onChanged: (value) {
-                setState(() => _selectedItem = value!);
+            Builder(
+              builder: (context) {
+                final screenWidth = MediaQuery.of(context).size.width;
+                final menuWidth = screenWidth * 0.70;
+                // Center menu under the full-width button (button = screenWidth - 40 padding)
+                final buttonWidth = screenWidth - 40;
+                final menuOffsetX = (buttonWidth - menuWidth) / 2;
+                return DropdownButtonFormField2<String>(
+                  value: _selectedItem,
+                  hint: const Text('Select item', style: TextStyle(fontSize: 18, color: AppTheme.textLight)),
+                  style: const TextStyle(fontSize: 18, color: AppTheme.textDark),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.inventory_2, size: 24),
+                  ),
+                  items: _allItems.map((item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item, style: const TextStyle(fontSize: 18)),
+                  )).toList(),
+                  onChanged: (value) {
+                    setState(() => _selectedItem = value);
+                    if (value != null && value != 'Other') {
+                      ref.read(itemServiceProvider).getPriceForItem(value).then((price) {
+                        if (mounted) {
+                          _unitPriceController.text = price > 0 ? price.toStringAsFixed(0) : '';
+                          _calculateTotal();
+                        }
+                      });
+                    } else {
+                      _unitPriceController.clear();
+                      _calculateTotal();
+                    }
+                  },
+                  validator: (val) => val == null ? 'Please select an item' : null,
+                  dropdownStyleData: DropdownStyleData(
+                    width: menuWidth,
+                    offset: Offset(menuOffsetX, 0),
+                    maxHeight: 380,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    scrollbarTheme: ScrollbarThemeData(
+                      radius: const Radius.circular(8),
+                      thumbVisibility: WidgetStateProperty.all(true),
+                    ),
+                  ),
+                  menuItemStyleData: const MenuItemStyleData(
+                    height: 52,
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                  ),
+                );
               },
             ),
 
@@ -351,48 +452,126 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
               children: [
                 Expanded(
                   child: _UnitToggle(
-                    label: 'Count',
-                    icon: Icons.numbers,
-                    isSelected: _selectedUnitType == 'count',
-                    onTap: () => setState(() => _selectedUnitType = 'count'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _UnitToggle(
                     label: 'Weight',
                     icon: Icons.scale,
                     isSelected: _selectedUnitType == 'weight',
                     onTap: () => setState(() => _selectedUnitType = 'weight'),
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _UnitToggle(
+                    label: 'Count',
+                    icon: Icons.numbers,
+                    isSelected: _selectedUnitType == 'count',
+                    onTap: () => setState(() => _selectedUnitType = 'count'),
+                  ),
+                ),
               ],
             ),
 
             const SizedBox(height: 20),
 
-            // ── Quantity (optional) ─────────────────
-            const _SectionLabel('Quantity (optional)'),
-            TextFormField(
-              controller: _quantityController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-              ],
-              style: const TextStyle(fontSize: 20),
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.production_quantity_limits, size: 24),
-                suffixText: _selectedUnitType == 'weight' ? 'kg' : 'pcs',
-                suffixStyle: const TextStyle(fontSize: 16, color: AppTheme.textMedium),
-                hintText: 'Optional',
+            // ── Quantity ────────────────────────────
+            const _SectionLabel('Quantity'),
+            if (_selectedUnitType == 'weight')
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _kgController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            onChanged: (_) => _calculateTotal(),
+                            style: const TextStyle(fontSize: 20),
+                            decoration: const InputDecoration(
+                              prefixIcon: Icon(Icons.scale, size: 24),
+                              hintText: '0',
+                            ),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8, top: 4),
+                          child: Text('kg', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMedium)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _gramsController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            onChanged: (_) => _calculateTotal(),
+                            style: const TextStyle(fontSize: 20),
+                            decoration: const InputDecoration(
+                              hintText: '0',
+                            ),
+                            validator: (val) {
+                              final g = int.tryParse(val ?? '');
+                              if (g != null && g > 999) return 'Max 999g';
+                              return null;
+                            },
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8, top: 4),
+                          child: Text('g', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMedium)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else
+              TextFormField(
+                controller: _quantityController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                ],
+                onChanged: (_) => _calculateTotal(),
+                style: const TextStyle(fontSize: 20),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.production_quantity_limits, size: 24),
+                  suffixText: 'pcs',
+                  suffixStyle: TextStyle(fontSize: 16, color: AppTheme.textMedium),
+                  hintText: '0',
+                ),
               ),
-              // No validator — field is optional
+
+            const SizedBox(height: 20),
+
+            // ── Unit Price ────────────────────────────
+            const _SectionLabel('Unit Price ₹'),
+            TextFormField(
+              controller: _unitPriceController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              onChanged: (_) => _calculateTotal(),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.price_change_outlined, size: 24),
+                prefixText: '₹ ',
+                prefixStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                hintText: 'Per kg / per piece',
+              ),
             ),
 
             const SizedBox(height: 20),
 
-            // ── Total Amount (optional) ─────────────
-            const _SectionLabel('Total Amount ₹ (optional)'),
+            // ── Total Amount ─────────────────────────
+            const _SectionLabel('Total Amount ₹'),
             TextFormField(
               controller: _totalAmountController,
               keyboardType: TextInputType.number,
@@ -403,7 +582,7 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                 prefixIcon: Icon(Icons.currency_rupee, size: 24),
                 prefixText: '₹ ',
                 prefixStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                hintText: 'Optional — leave blank if unknown',
+                hintText: 'Leave blank if unknown',
               ),
               // No validator — field is optional
             ),
@@ -466,8 +645,8 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
 
             const SizedBox(height: 20),
 
-            // ── Notes (optional) ───────────────────
-            const _SectionLabel('Notes (optional)'),
+            // ── Notes ──────────────────────────────
+            const _SectionLabel('Notes'),
             TextFormField(
               controller: _notesController,
               maxLines: 3,

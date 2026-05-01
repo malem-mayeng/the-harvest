@@ -6,6 +6,7 @@ class Tables {
   static const String salesTable = 'sales';
   static const String paymentsTable = 'payments';
   static const String customItemsTable = 'custom_items';
+  static const String itemsTable = 'items';
 
   /// SQL to create the buyers table.
   static const String createBuyersTable = '''
@@ -59,4 +60,21 @@ class Tables {
       created_at TEXT NOT NULL
     )
   ''';
+
+  /// SQL to create the unified items table (defaults + custom, with price memory).
+  static const String createItemsTable = '''
+    CREATE TABLE $itemsTable (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_name TEXT UNIQUE NOT NULL,
+      unit_price REAL NOT NULL DEFAULT 0,
+      price_unit TEXT NOT NULL DEFAULT 'kg',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  ''';
+
+  static const List<String> defaultItemNames = [
+    'Grass', 'Rohu', 'Silver', 'Hurubai', 'Common', 'Ukabi', 'Ngakup', 'Vegetables',
+  ];
 }

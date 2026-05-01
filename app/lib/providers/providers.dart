@@ -3,12 +3,15 @@ import '../database/database_helper.dart';
 import '../models/buyer.dart';
 import '../models/payment.dart';
 import '../models/sale.dart';
+import '../models/item_entry.dart';
 import '../repositories/buyer_repository.dart';
 import '../repositories/custom_item_repository.dart';
+import '../repositories/item_repository.dart';
 import '../repositories/payment_repository.dart';
 import '../repositories/sale_repository.dart';
 import '../services/buyer_service.dart';
 import '../services/custom_item_service.dart';
+import '../services/item_service.dart';
 import '../services/sale_service.dart';
 
 // ── Database ──────────────────────────────────────────────
@@ -35,6 +38,10 @@ final customItemRepositoryProvider = Provider<CustomItemRepository>((ref) {
   return CustomItemRepository(ref.read(databaseHelperProvider));
 });
 
+final itemRepositoryProvider = Provider<ItemRepository>((ref) {
+  return ItemRepository(ref.read(databaseHelperProvider));
+});
+
 // ── Services ──────────────────────────────────────────────
 
 final buyerServiceProvider = Provider<BuyerService>((ref) {
@@ -54,6 +61,10 @@ final saleServiceProvider = Provider<SaleService>((ref) {
 
 final customItemServiceProvider = Provider<CustomItemService>((ref) {
   return CustomItemService(ref.read(customItemRepositoryProvider));
+});
+
+final itemServiceProvider = Provider<ItemService>((ref) {
+  return ItemService(ref.read(itemRepositoryProvider));
 });
 
 // ── State Providers ───────────────────────────────────────
@@ -86,4 +97,9 @@ final salePaymentsProvider = FutureProvider.family<List<Payment>, int>((ref, sal
 /// Custom item names list — auto-refreshable.
 final customItemListProvider = FutureProvider<List<String>>((ref) {
   return ref.read(customItemServiceProvider).getAllItems();
+});
+
+/// Full item list (all entries with price) — auto-refreshable.
+final itemListProvider = FutureProvider<List<ItemEntry>>((ref) {
+  return ref.read(itemServiceProvider).getAllItems();
 });
