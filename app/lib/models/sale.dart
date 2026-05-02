@@ -7,9 +7,11 @@ class Sale {
   final double quantity;
   final double totalAmount;
   final double advancePaid;
+  final double totalPaid;
   final double dueAmount;
   final DateTime saleDate;
   final String status; // 'pending' or 'paid'
+  final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -25,14 +27,17 @@ class Sale {
     required this.quantity,
     required this.totalAmount,
     required this.advancePaid,
+    double? totalPaid,
     double? dueAmount,
     DateTime? saleDate,
     this.status = 'pending',
+    this.notes,
     DateTime? createdAt,
     DateTime? updatedAt,
     this.buyerName,
     this.buyerCode,
-  })  : dueAmount = dueAmount ?? (totalAmount - advancePaid),
+  })  : totalPaid = totalPaid ?? advancePaid,
+        dueAmount = dueAmount ?? (totalAmount - (totalPaid ?? advancePaid)).clamp(0, double.infinity),
         saleDate = saleDate ?? DateTime.now(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
@@ -47,9 +52,11 @@ class Sale {
       quantity: (map['quantity'] as num).toDouble(),
       totalAmount: (map['total_amount'] as num).toDouble(),
       advancePaid: (map['advance_paid'] as num).toDouble(),
+      totalPaid: (map['total_paid'] as num?)?.toDouble() ?? (map['advance_paid'] as num).toDouble(),
       dueAmount: (map['due_amount'] as num).toDouble(),
       saleDate: DateTime.parse(map['sale_date'] as String),
       status: map['status'] as String,
+      notes: map['notes'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
       buyerName: map['buyer_name'] as String?,
@@ -67,9 +74,11 @@ class Sale {
       'quantity': quantity,
       'total_amount': totalAmount,
       'advance_paid': advancePaid,
+      'total_paid': totalPaid,
       'due_amount': dueAmount,
       'sale_date': saleDate.toIso8601String(),
       'status': status,
+      'notes': notes,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -84,9 +93,11 @@ class Sale {
     double? quantity,
     double? totalAmount,
     double? advancePaid,
+    double? totalPaid,
     double? dueAmount,
     DateTime? saleDate,
     String? status,
+    String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
     String? buyerName,
@@ -100,9 +111,11 @@ class Sale {
       quantity: quantity ?? this.quantity,
       totalAmount: totalAmount ?? this.totalAmount,
       advancePaid: advancePaid ?? this.advancePaid,
+      totalPaid: totalPaid ?? this.totalPaid,
       dueAmount: dueAmount ?? this.dueAmount,
       saleDate: saleDate ?? this.saleDate,
       status: status ?? this.status,
+      notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       buyerName: buyerName ?? this.buyerName,

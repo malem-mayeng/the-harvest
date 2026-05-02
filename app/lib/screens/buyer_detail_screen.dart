@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/buyer.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sale_card.dart';
 import 'add_sale_screen.dart';
+import 'payment_history_screen.dart';
 
 /// Screen showing all sales records for a specific buyer.
 class BuyerDetailScreen extends ConsumerWidget {
@@ -49,37 +51,58 @@ class BuyerDetailScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      buyer.buyerName,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        buyer.buyerCode,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        buyer.buyerName,
                         style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryGreen,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          buyer.buyerCode,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Payment history button
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PaymentHistoryScreen(buyer: buyer),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.receipt_long, size: 20),
+                  label: const Text('₹ History'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1565C0),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    minimumSize: Size.zero,
+                  ),
                 ),
               ],
             ),
@@ -147,41 +170,18 @@ class BuyerDetailScreen extends ConsumerWidget {
                           ref.invalidate(pendingSalesProvider);
                         }
                       },
+                      onDelete: () => _confirmDeleteSale(context, ref, sale),
+                      onAddPayment: sale.isPending
+                          ? () => _showAddPaymentDialog(context, ref, sale)
+                          : null,
                       onMarkPaid: sale.isPending
-                          ? () async {
-                              final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text(
-                                    'Mark as Paid?',
-                                    style: TextStyle(fontSize: 22),
-                                  ),
-                                  content: Text(
-                                    'Mark ₹${sale.dueAmount.toStringAsFixed(0)} as fully paid?',
-                                    style: const TextStyle(fontSize: 18),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
-                                      child: const Text('Cancel', style: TextStyle(fontSize: 18)),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.successGreen,
-                                      ),
-                                      child: const Text('Yes, Paid', style: TextStyle(fontSize: 18)),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirm == true) {
-                                await ref
-                                    .read(saleServiceProvider)
-                                    .markSaleAsPaid(sale.id!);
-                                ref.invalidate(buyerSalesProvider(buyer.id!));
-                                ref.invalidate(pendingSalesProvider);
-                              }
+                          ? (notes) async {
+                              await ref.read(saleServiceProvider).markSaleAsComplete(
+                                    sale.id!,
+                                    notes: notes,
+                                  );
+                              ref.invalidate(buyerSalesProvider(buyer.id!));
+                              ref.invalidate(pendingSalesProvider);
                             }
                           : null,
                     );
@@ -194,4 +194,124 @@ class BuyerDetailScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _confirmDeleteSale(BuildContext context, WidgetRef ref, sale) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Sale?', style: TextStyle(fontSize: 22)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Delete this sale record? This cannot be undone.',
+              style: TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.errorRed,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: const Text('Yes, Delete', style: TextStyle(fontSize: 18)),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(ctx, false),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('No', style: TextStyle(fontSize: 20)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirm == true) {
+      await ref.read(saleServiceProvider).deleteSale(sale.id!);
+      ref.invalidate(buyerSalesProvider(buyer.id!));
+      ref.invalidate(pendingSalesProvider);
+    }
+  }
+
+  void _showAddPaymentDialog(BuildContext context, WidgetRef ref, sale) async {
+    final amountController = TextEditingController(
+      text: sale.dueAmount.toStringAsFixed(0),
+    );
+    final notesController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Payment', style: TextStyle(fontSize: 22)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Current due: ₹${sale.dueAmount.toStringAsFixed(0)}',
+                style: const TextStyle(fontSize: 16, color: AppTheme.textMedium),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                decoration: const InputDecoration(
+                  labelText: 'Amount Received',
+                  prefixText: '₹ ',
+                  prefixStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesController,
+                style: const TextStyle(fontSize: 16),
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  hintText: 'e.g., Cash payment',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontSize: 18)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Record Payment', style: TextStyle(fontSize: 18)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final amount = double.tryParse(amountController.text) ?? 0;
+      if (amount > 0) {
+        final notes = notesController.text.trim().isEmpty
+            ? null
+            : notesController.text.trim();
+        await ref.read(saleServiceProvider).addPayment(
+              saleId: sale.id!,
+              amount: amount,
+              notes: notes,
+            );
+        ref.invalidate(buyerSalesProvider(buyer.id!));
+        ref.invalidate(pendingSalesProvider);
+        ref.invalidate(paymentHistoryProvider(buyer.id!));
+      }
+    }
+
+    amountController.dispose();
+    notesController.dispose();
+  }
+
 }

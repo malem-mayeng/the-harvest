@@ -8,14 +8,18 @@ class SaleCard extends StatelessWidget {
   final Sale sale;
   final bool showBuyerName;
   final VoidCallback? onEdit;
-  final VoidCallback? onMarkPaid;
+  final VoidCallback? onDelete;
+  final Function(String? notes)? onMarkPaid;
+  final VoidCallback? onAddPayment;
 
   const SaleCard({
     super.key,
     required this.sale,
     this.showBuyerName = false,
     this.onEdit,
+    this.onDelete,
     this.onMarkPaid,
+    this.onAddPayment,
   });
 
   @override
@@ -24,6 +28,17 @@ class SaleCard extends StatelessWidget {
     final isPending = sale.isPending;
 
     return Card(
+      elevation: 3,
+      shadowColor: AppTheme.cardShadow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isPending
+              ? AppTheme.pendingOrange.withValues(alpha: 0.2)
+              : AppTheme.paidGreen.withValues(alpha: 0.15),
+          width: 1,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -74,7 +89,9 @@ class SaleCard extends StatelessWidget {
                 Expanded(
                   child: _buildDetail(
                     'Qty',
-                    '${sale.quantity} ${sale.unitType}',
+                    sale.quantity > 0
+                        ? '${sale.quantity} ${sale.unitType}'
+                        : '—',
                   ),
                 ),
               ],
@@ -83,7 +100,12 @@ class SaleCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _buildDetail('Total', '₹${sale.totalAmount.toStringAsFixed(0)}'),
+                  child: _buildDetail(
+                    'Total',
+                    sale.totalAmount > 0
+                        ? '₹${sale.totalAmount.toStringAsFixed(0)}'
+                        : '—',
+                  ),
                 ),
                 Expanded(
                   child: _buildDetail('Advance', '₹${sale.advancePaid.toStringAsFixed(0)}'),
@@ -91,21 +113,86 @@ class SaleCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            _buildDetail(
-              'Due',
-              '₹${sale.dueAmount.toStringAsFixed(0)}',
-              valueColor: isPending ? AppTheme.pendingOrange : AppTheme.paidGreen,
-              isBold: true,
+
+            // Due row with Pay button inline
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetail(
+                    'Paid',
+                    '₹${sale.totalPaid.toStringAsFixed(0)}',
+                    valueColor: AppTheme.paidGreen,
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: _buildDetail(
+                          'Due',
+                          '₹${sale.dueAmount.toStringAsFixed(0)}',
+                          valueColor: isPending ? AppTheme.pendingOrange : AppTheme.paidGreen,
+                          isBold: true,
+                        ),
+                      ),
+                      // Pay button with border
+                      if (onAddPayment != null && isPending)
+                        SizedBox(
+                          height: 34,
+                          child: OutlinedButton.icon(
+                            onPressed: onAddPayment,
+                            icon: const Icon(Icons.payments, size: 16),
+                            label: const Text('Pay', style: TextStyle(fontSize: 14)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF1565C0),
+                              side: const BorderSide(color: Color(0xFF1565C0), width: 1.5),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              minimumSize: Size.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
 
-            // Action buttons
-            if (onEdit != null || (onMarkPaid != null && isPending)) ...[
+            // Notes snippet
+            if (sale.notes != null && sale.notes!.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.notes, size: 16, color: AppTheme.textLight),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      sale.notes!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textMedium,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
+            // Action buttons: Edit (left) | All Clear (center) | Delete (right)
+            if (onEdit != null || onDelete != null ||
+                (onMarkPaid != null && isPending)) ...[
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // Edit — far left
                   if (onEdit != null)
                     TextButton.icon(
                       onPressed: onEdit,
@@ -113,21 +200,36 @@ class SaleCard extends StatelessWidget {
                       label: const Text('Edit', style: TextStyle(fontSize: 16)),
                       style: TextButton.styleFrom(
                         foregroundColor: AppTheme.primaryGreen,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
                     ),
-                  if (onEdit != null && onMarkPaid != null && isPending)
-                    const SizedBox(width: 8),
+                  const Spacer(),
+                  // All Clear — center
                   if (onMarkPaid != null && isPending)
-                    ElevatedButton.icon(
-                      onPressed: onMarkPaid,
-                      icon: const Icon(Icons.check_circle, size: 20),
-                      label: const Text('Mark Paid'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.successGreen,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    SizedBox(
+                      height: 38,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _confirmAllClear(context),
+                        icon: const Icon(Icons.check_circle, size: 18),
+                        label: const Text('All Clear'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.successGreen,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          minimumSize: Size.zero,
+                        ),
                       ),
+                    ),
+                  const Spacer(),
+                  // Delete — far right
+                  if (onDelete != null)
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline, size: 22),
+                      color: AppTheme.errorRed,
+                      tooltip: 'Delete',
+                      padding: const EdgeInsets.all(8),
+                      constraints: const BoxConstraints(),
                     ),
                 ],
               ),
@@ -136,6 +238,55 @@ class SaleCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Confirmation popup for "All Clear" — includes notes field, Yes is focused/prominent.
+  void _confirmAllClear(BuildContext context) async {
+    final notesController = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark as All Clear?', style: TextStyle(fontSize: 22)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Settle this payment?\nRemaining due: ₹${sale.dueAmount.toStringAsFixed(0)}\n\nThis will mark the sale as fully paid.',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                style: const TextStyle(fontSize: 16),
+                decoration: const InputDecoration(
+                  labelText: 'Settlement notes',
+                  hintText: 'e.g., Forgave ₹500',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontSize: 18)),
+          ),
+          ElevatedButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
+            child: const Text('Yes, All Clear', style: TextStyle(fontSize: 18)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
+      onMarkPaid?.call(notes);
+    }
+    notesController.dispose();
   }
 
   Widget _buildStatusBadge(bool isPending) {

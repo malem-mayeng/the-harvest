@@ -59,4 +59,25 @@ class BuyerRepository {
     final count = Sqflite.firstIntValue(result) ?? 0;
     return 'B${(count + 1).toString().padLeft(3, '0')}';
   }
+
+  /// Update a buyer's name.
+  Future<int> updateName(int buyerId, String newName) async {
+    final db = await _dbHelper.database;
+    return await db.update(
+      Tables.buyersTable,
+      {'buyer_name': newName.trim()},
+      where: 'id = ?',
+      whereArgs: [buyerId],
+    );
+  }
+
+  /// Delete a buyer by id.
+  Future<int> delete(int buyerId) async {
+    final db = await _dbHelper.database;
+    return await db.delete(
+      Tables.buyersTable,
+      where: 'id = ?',
+      whereArgs: [buyerId],
+    );
+  }
 }

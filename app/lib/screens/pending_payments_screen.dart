@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
@@ -143,40 +144,14 @@ class PendingPaymentsScreen extends ConsumerWidget {
                     return SaleCard(
                       sale: sale,
                       showBuyerName: true,
-                      onMarkPaid: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text(
-                              'Mark as Paid?',
-                              style: TextStyle(fontSize: 22),
-                            ),
-                            content: Text(
-                              'Mark ₹${sale.dueAmount.toStringAsFixed(0)} from ${sale.buyerName ?? 'buyer'} as fully paid?',
-                              style: const TextStyle(fontSize: 18),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel', style: TextStyle(fontSize: 18)),
-                              ),
-                              ElevatedButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.successGreen,
-                                ),
-                                child: const Text('Yes, Paid', style: TextStyle(fontSize: 18)),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) {
-                          await ref
-                              .read(saleServiceProvider)
-                              .markSaleAsPaid(sale.id!);
-                          ref.invalidate(pendingSalesProvider);
-                          ref.invalidate(buyerListProvider);
-                        }
+                      onAddPayment: () => _showAddPaymentDialog(context, ref, sale),
+                      onMarkPaid: (notes) async {
+                        await ref.read(saleServiceProvider).markSaleAsComplete(
+                              sale.id!,
+                              notes: notes,
+                            );
+                        ref.invalidate(pendingSalesProvider);
+                        ref.invalidate(buyerListProvider);
                       },
                     );
                   },
@@ -188,4 +163,81 @@ class PendingPaymentsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _showAddPaymentDialog(BuildContext context, WidgetRef ref, sale) async {
+    final amountController = TextEditingController(
+      text: sale.dueAmount.toStringAsFixed(0),
+    );
+    final notesController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Payment', style: TextStyle(fontSize: 22)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Buyer: ${sale.buyerName ?? 'Unknown'}\nCurrent due: ₹${sale.dueAmount.toStringAsFixed(0)}',
+                style: const TextStyle(fontSize: 16, color: AppTheme.textMedium),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                decoration: const InputDecoration(
+                  labelText: 'Amount Received',
+                  prefixText: '₹ ',
+                  prefixStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesController,
+                style: const TextStyle(fontSize: 16),
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  hintText: 'e.g., Cash payment',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontSize: 18)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Record Payment', style: TextStyle(fontSize: 18)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final amount = double.tryParse(amountController.text) ?? 0;
+      if (amount > 0) {
+        final notes = notesController.text.trim().isEmpty
+            ? null
+            : notesController.text.trim();
+        await ref.read(saleServiceProvider).addPayment(
+              saleId: sale.id!,
+              amount: amount,
+              notes: notes,
+            );
+        ref.invalidate(pendingSalesProvider);
+        ref.invalidate(buyerListProvider);
+      }
+    }
+
+    amountController.dispose();
+    notesController.dispose();
+  }
+
 }
