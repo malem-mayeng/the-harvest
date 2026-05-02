@@ -87,10 +87,19 @@ class DatabaseHelper {
       }
     }
     if (oldVersion < 4) {
-      // Add new columns to existing items table
-      await db.execute("ALTER TABLE ${Tables.itemsTable} ADD COLUMN price_unit TEXT NOT NULL DEFAULT 'kg'");
-      await db.execute('ALTER TABLE ${Tables.itemsTable} ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
-      // Set initial sort_order based on current row order
+      // Check which columns already exist — the v3 path may have already created
+      // the table with the new schema, so we must not add columns that are there.
+      final colInfo = await db.rawQuery('PRAGMA table_info(${Tables.itemsTable})');
+      final existingCols = colInfo.map((c) => c['name'] as String).toSet();
+
+      if (!existingCols.contains('price_unit')) {
+        await db.execute("ALTER TABLE ${Tables.itemsTable} ADD COLUMN price_unit TEXT DEFAULT 'kg'");
+        await db.execute("UPDATE ${Tables.itemsTable} SET price_unit = 'kg' WHERE price_unit IS NULL");
+      }
+      if (!existingCols.contains('sort_order')) {
+        await db.execute('ALTER TABLE ${Tables.itemsTable} ADD COLUMN sort_order INTEGER DEFAULT 0');
+      }
+      // Assign sort_order values regardless (idempotent — sets them to a stable order)
       final rows = await db.query(Tables.itemsTable, columns: ['id'], orderBy: 'is_default DESC, item_name ASC');
       for (var i = 0; i < rows.length; i++) {
         await db.update(Tables.itemsTable, {'sort_order': i}, where: 'id = ?', whereArgs: [rows[i]['id']]);
