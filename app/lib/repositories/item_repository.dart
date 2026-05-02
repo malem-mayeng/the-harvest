@@ -115,9 +115,9 @@ class ItemRepository {
     await batch.commit(noResult: true);
   }
 
-  /// Delete a custom item by id.
+  /// Delete an item by id (all items deletable).
   Future<void> deleteItem(int id) async {
     final db = await _dbHelper.database;
-    await db.delete(Tables.itemsTable, where: 'id = ? AND is_default = 0', whereArgs: [id]);
+    await db.delete(Tables.itemsTable, where: 'id = ?', whereArgs: [id]);
   }
 }

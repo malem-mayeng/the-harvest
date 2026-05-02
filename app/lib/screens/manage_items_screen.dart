@@ -164,17 +164,18 @@ class ManageItemsScreen extends ConsumerWidget {
     );
     String selectedUnit = item.priceUnit;
 
-    final confirmed = await showDialog<bool>(
+    // Returns 'save', 'delete', or null (dismissed/cancel)
+    final result = await showDialog<String>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Edit Item', style: TextStyle(fontSize: 22)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
                 controller: nameController,
-                autofocus: true,
                 style: const TextStyle(fontSize: 18),
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(labelText: 'Item Name'),
@@ -202,23 +203,38 @@ class ManageItemsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
+              // Delete | Cancel row
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, 'delete'),
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.errorRed),
+                    child: const Text('Delete', style: TextStyle(fontSize: 16)),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, null),
+                    child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Save button — full width
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, 'save'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Save', style: TextStyle(fontSize: 18)),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(fontSize: 18)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save', style: TextStyle(fontSize: 18)),
-            ),
-          ],
         ),
       ),
     );
 
-    if (confirmed == true) {
+    if (result == 'save') {
       final newName = nameController.text.trim();
       final newPrice = double.tryParse(priceController.text);
       await ref.read(itemServiceProvider).updateItem(
@@ -228,13 +244,18 @@ class ManageItemsScreen extends ConsumerWidget {
             priceUnit: selectedUnit,
           );
       ref.invalidate(itemListProvider);
+    } else if (result == 'delete') {
+      nameController.dispose();
+      priceController.dispose();
+      if (context.mounted) _confirmDeleteItem(context, ref, item);
+      return;
     }
 
     nameController.dispose();
     priceController.dispose();
   }
 
-  void _confirmDeleteItem(BuildContext context, WidgetRef ref, ItemEntry item) async {
+  Future<void> _confirmDeleteItem(BuildContext context, WidgetRef ref, ItemEntry item) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

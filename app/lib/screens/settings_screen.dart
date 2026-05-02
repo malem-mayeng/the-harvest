@@ -131,6 +131,15 @@ class SettingsScreen extends ConsumerWidget {
                     color: AppTheme.textLight,
                   ),
                 ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Crafted with ♥ by Malem Mayengbam',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textLight,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
               ],
             ),
           ),
